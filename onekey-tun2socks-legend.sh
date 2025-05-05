@@ -13,7 +13,7 @@ RESOLV_CONF_BAK="/etc/resolv.conf.bak"
 WAS_IMMUTABLE=false
 
 echo "检查 /etc/resolv.conf 锁定状态..."
-if lsattr -d "$RESOLV_CONF" 2>/dev/null | grep -q -- '-------i-------'; then
+if lsattr -d "$RESOLV_CONF" 2>/dev/null | grep -q -- '-i-'; then
     echo "/etc/resolv.conf 文件当前被锁定 (immutable)，尝试解锁..."
     chattr -i "$RESOLV_CONF" || { echo "错误：无法解锁 /etc/resolv.conf，请检查权限。"; exit 1; }
     WAS_IMMUTABLE=true
