@@ -8,6 +8,28 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+RESOLV_CONF="/etc/resolv.conf"
+RESOLV_CONF_BAK="/etc/resolv.conf.bak"
+WAS_IMMUTABLE=false
+
+echo "检查 /etc/resolv.conf 锁定状态..."
+if lsattr -d "$RESOLV_CONF" 2>/dev/null | grep -q -- '-i-'; then
+    echo "/etc/resolv.conf 文件当前被锁定 (immutable)，尝试解锁..."
+    chattr -i "$RESOLV_CONF" || { echo "错误：无法解锁 /etc/resolv.conf，请检查权限。"; exit 1; }
+    WAS_IMMUTABLE=true
+    echo "解锁成功。"
+else
+    echo "/etc/resolv.conf 未被锁定。"
+fi
+
+echo "备份当前 DNS 配置..."
+cp "$RESOLV_CONF" "$RESOLV_CONF_BAK" || { echo "警告：备份 DNS 配置失败，可能文件不存在或权限不足。"; }
+
+echo "设置 Alice DNS64 服务器..."
+cat > "$RESOLV_CONF" <<EOF
+nameserver 2a14:67c0:103:c::a
+EOF
+
 # 配置参数
 
 REPO="heiher/hev-socks5-tunnel"
@@ -30,7 +52,32 @@ BINARY_PATH="$INSTALL_DIR/tun2socks"
 
 echo "正在下载最新二进制文件："
 echo "$DOWNLOAD_URL"
+# 使用 trap 确保即使 curl 失败或被中断也能尝试恢复 DNS 和锁定状态
+trap 'echo "下载被中断或失败，尝试恢复 DNS..."; if [ -f "$RESOLV_CONF_BAK" ]; then mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"; if [ "$WAS_IMMUTABLE" = true ]; then chattr +i "$RESOLV_CONF"; fi; else echo "警告：未找到备份，无法恢复。"; if [ "$WAS_IMMUTABLE" = true ]; then chattr +i "$RESOLV_CONF"; fi; fi; exit 1' INT TERM EXIT
 curl -L -o "$BINARY_PATH" "$DOWNLOAD_URL"
+# 下载成功后清除 trap
+trap - INT TERM EXIT
+
+
+echo "恢复原始 DNS 配置..."
+if [ -f "$RESOLV_CONF_BAK" ]; then
+    mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"
+    echo "DNS 配置已恢复。"
+
+    # 如果原来是锁定的，重新锁定
+    if [ "$WAS_IMMUTABLE" = true ]; then
+        echo "重新锁定 /etc/resolv.conf..."
+        chattr +i "$RESOLV_CONF" || echo "警告：无法重新锁定 /etc/resolv.conf。"
+        echo "锁定完成。"
+    fi
+else
+    echo "警告：未找到 DNS 备份文件 ($RESOLV_CONF_BAK)，无法自动恢复。"
+    if [ "$WAS_IMMUTABLE" = true ]; then
+         echo "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
+         chattr +i "$RESOLV_CONF" || echo "警告：无法锁定 /etc/resolv.conf。"
+    fi
+fi
+
 chmod +x "$BINARY_PATH"
 
 echo "创建配置文件..."
