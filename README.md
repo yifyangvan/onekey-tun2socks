@@ -4,24 +4,24 @@
 
 ### 以下命令适用于Alice的纯IPv6免费机
 ```bash
-curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i alice
+curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i alice
 ```
 
 ### 以下命令适用于LegendVPS的纯IPv6免费机
 ```bash
-curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i legend
+curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i legend
 ```
 
 ### 卸载
 ```bash
-curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -u
+curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -u
 ```
 
 ## 手动下载运行
 
 1. 下载脚本：
 ```bash
-curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh
+curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh
 ```
 
 2. 添加执行权限：
