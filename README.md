@@ -1,19 +1,68 @@
-# 一键添加Socks5 IPv4出口
+# 给免费机一键添加Socks5 IPv4出口
 
-以下命令适用于Alice的纯IPv6免费机，会自动更换Alice DNS64进行下载，下载后会恢复为原先的DNS
+## 快速开始
 
-```
-curl -sSL https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks-alice.sh | sudo bash
-```
-
-以下命令适用于LegendVPS的纯IPv6免费机，会自动更换公共DNS64进行下载，下载后会恢复为原先的DNS
-
-```
-curl -sSL https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks-legend.sh | sudo bash
+### 以下命令适用于Alice的纯IPv6免费机
+```bash
+curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i alice
 ```
 
-运行以下命令一键删除
-
+### 以下命令适用于LegendVPS的纯IPv6免费机
+```bash
+curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i legend
 ```
-curl -sSL https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/uninstall-tun2socks.sh | sudo bash
+
+### 卸载
+```bash
+curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -u
+```
+
+## 手动下载运行
+
+1. 下载脚本：
+```bash
+curl -L https://raw.githubusercontent.com/yourusername/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh
+```
+
+2. 添加执行权限：
+```bash
+chmod +x onekey-tun2socks.sh
+```
+
+3. 查看帮助信息：
+```bash
+./onekey-tun2socks.sh -h
+```
+
+4. 运行脚本：
+```bash
+# 安装 Alice 版本
+sudo ./onekey-tun2socks.sh -i alice
+
+# 安装 Legend 版本
+sudo ./onekey-tun2socks.sh -i legend
+
+# 卸载
+sudo ./onekey-tun2socks.sh -u
+```
+
+## 服务管理
+
+安装完成后，可以使用以下命令管理服务：
+
+```bash
+# 查看服务状态
+systemctl status tun2socks.service
+
+# 启动服务
+systemctl start tun2socks.service
+
+# 停止服务
+systemctl stop tun2socks.service
+
+# 重启服务
+systemctl restart tun2socks.service
+
+# 查看日志
+journalctl -u tun2socks.service
 ```
