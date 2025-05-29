@@ -166,6 +166,7 @@ install_tun2socks() {
     if [ "$MODE" = "alice" ]; then
         step "设置 Alice DNS64 服务器..."
         cat > "$RESOLV_CONF" <<EOF
+nameserver 2602:fc59:b0:9e::64
 nameserver 2a14:67c0:103:c::a
 EOF
     else
