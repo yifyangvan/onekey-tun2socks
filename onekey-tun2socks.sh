@@ -37,7 +37,7 @@ fi
 select_alice_port() {
     local selected_port=""
     while true; do
-        info "请为 Alice 模式选择 SOCKS5 出口端口:" >&2
+        info "请为 Alice 模式选择 Socks5 出口端口:" >&2
         printf "  %s\n" \
             "1) 香港机房IP       (端口: 10000)" \
             "2) 新加坡机房IP     (端口: 10001)" \
@@ -91,14 +91,14 @@ show_usage() {
     echo -e "${CYAN}选项:${NC}"
     echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice 或 legend)"
     echo -e "  ${GREEN}-u, --uninstall${NC}  卸载 tun2socks"
-    echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 SOCKS5 端口 (如果已安装)"
+    echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 Socks5 端口 (如果已安装)"
     echo -e "  ${GREEN}-h, --help${NC}       显示此帮助信息"
     echo
     echo -e "${CYAN}示例:${NC}"
     echo -e "  $0 -i alice    安装 Alice 版本的 tun2socks"
     echo -e "  $0 -i legend   安装 Legend 版本的 tun2socks"
     echo -e "  $0 -u          卸载 tun2socks"
-    echo -e "  $0 -s          切换 Alice 模式的 SOCKS5 端口"
+    echo -e "  $0 -s          切换 Alice 模式的 Socks5 端口"
 }
 
 INSTALL=false
@@ -211,6 +211,18 @@ uninstall_tun2socks() {
 }
 
 install_tun2socks() {
+    step "检查 tun2socks 服务当前状态 (准备安装)..."
+    if systemctl is-active --quiet tun2socks.service; then
+        info "tun2socks 服务正在运行，将在安装前停止它。"
+        if systemctl stop tun2socks.service; then
+            success "tun2socks 服务已成功停止。"
+        else
+            warning "尝试停止 tun2socks 服务失败，安装将继续，但可能遇到问题。"
+        fi
+    else
+        info "tun2socks 服务当前未运行。"
+    fi
+
     RESOLV_CONF="/etc/resolv.conf"
     RESOLV_CONF_BAK="/etc/resolv.conf.bak"
     WAS_IMMUTABLE=false
@@ -390,7 +402,7 @@ EOF
 
 switch_alice_port() {
     CONFIG_FILE="/etc/tun2socks/config.yaml"
-    step "开始切换 Alice 模式 SOCKS5 端口..."
+    step "开始切换 Alice 模式 Socks5 端口..."
 
     if [ ! -f "$CONFIG_FILE" ]; then
         error "配置文件 $CONFIG_FILE 未找到。请先运行安装命令。"
@@ -407,7 +419,7 @@ switch_alice_port() {
         error "无法从配置文件中读取当前端口。"
         exit 1
     fi
-    info "当前 SOCKS5 端口: $current_port"
+    info "当前 Socks5 端口: $current_port"
 
     NEW_SOCKS_PORT=$(select_alice_port)
 
@@ -437,7 +449,7 @@ switch_alice_port() {
     step "正在启动 tun2socks 服务..."
     if systemctl start tun2socks.service; then
         success "tun2socks 服务已启动。"
-        success "SOCKS5 端口已成功切换至 $NEW_SOCKS_PORT。"
+        success "Socks5 端口已成功切换至 $NEW_SOCKS_PORT。"
     else
         error "启动 tun2socks 服务失败。请使用 'systemctl status tun2socks.service' 和 'journalctl -u tun2socks.service' 查看详情。"
         error "配置文件可能已更新为新端口 $NEW_SOCKS_PORT，但服务启动失败。"
