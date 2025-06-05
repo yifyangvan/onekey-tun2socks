@@ -34,21 +34,63 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+select_alice_port() {
+    local selected_port=""
+    while true; do
+        info "请为 Alice 模式选择 SOCKS5 出口端口:" >&2
+        echo "  1) 香港机房IP (端口: 10000)" >&2
+        echo "  2) 香港家宽   (端口: 20000)" >&2
+        echo "  3) 台湾家宽   (端口: 30000)" >&2
+        echo "  4) 新加坡     (端口: 10001)" >&2
+        read -r -p "请输入选项 (1-4，默认为1): " port_choice
+
+        case "$port_choice" in
+            1|"")
+                selected_port=10000
+                info "已选择端口: 10000 (香港机房IP)" >&2
+                break
+                ;;
+            2)
+                selected_port=20000
+                info "已选择端口: 20000 (香港家宽)" >&2
+                break
+                ;;
+            3)
+                selected_port=30000
+                info "已选择端口: 30000 (台湾家宽)" >&2
+                break
+                ;;
+            4)
+                selected_port=10001
+                info "已选择端口: 10001 (新加坡)" >&2
+                break
+                ;;
+            *)
+                error "无效的选择，请输入 1, 2, 3, 或 4。" >&2
+                ;;
+        esac
+    done
+    echo "$selected_port"
+}
+
 show_usage() {
     echo -e "${CYAN}使用方法:${NC} $0 [选项]"
     echo -e "${CYAN}选项:${NC}"
     echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice 或 legend)"
     echo -e "  ${GREEN}-u, --uninstall${NC}  卸载 tun2socks"
+    echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 SOCKS5 端口 (如果已安装)"
     echo -e "  ${GREEN}-h, --help${NC}       显示此帮助信息"
     echo
     echo -e "${CYAN}示例:${NC}"
     echo -e "  $0 -i alice    安装 Alice 版本的 tun2socks"
     echo -e "  $0 -i legend   安装 Legend 版本的 tun2socks"
     echo -e "  $0 -u          卸载 tun2socks"
+    echo -e "  $0 -s          切换 Alice 模式的 SOCKS5 端口"
 }
 
 INSTALL=false
 UNINSTALL=false
+SWITCH_CONFIG=false
 MODE="alice"
 
 while [[ $# -gt 0 ]]; do
@@ -66,6 +108,10 @@ while [[ $# -gt 0 ]]; do
             UNINSTALL=true
             shift
             ;;
+        -s|--switch)
+            SWITCH_CONFIG=true
+            shift
+            ;;
         -h|--help)
             show_usage
             exit 0
@@ -78,11 +124,27 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ "$INSTALL" = false ] && [ "$UNINSTALL" = false ]; then
-    error "请指定安装 (-i) 或卸载 (-u) 操作"
+operation_count=0
+if [ "$INSTALL" = true ]; then operation_count=$((operation_count + 1)); fi
+if [ "$UNINSTALL" = true ]; then operation_count=$((operation_count + 1)); fi
+if [ "$SWITCH_CONFIG" = true ]; then operation_count=$((operation_count + 1)); fi
+
+if [ "$operation_count" -eq 0 ]; then
+    error "请指定一个操作: 安装 (-i), 卸载 (-u), 或切换端口 (-s)"
+    show_usage
+    exit 1
+elif [ "$operation_count" -gt 1 ]; then
+    error "请仅指定一个主要操作: 安装 (-i), 卸载 (-u), 或切换端口 (-s)"
     show_usage
     exit 1
 fi
+
+if [ "$SWITCH_CONFIG" = true ] && [ "$INSTALL" = true ]; then
+    error "不能同时指定安装 (-i) 和切换端口 (-s) 操作。"
+    show_usage
+    exit 1
+fi
+
 
 uninstall_tun2socks() {
     SERVICE_FILE="/etc/systemd/system/tun2socks.service"
@@ -211,41 +273,7 @@ EOF
     CONFIG_FILE="$CONFIG_DIR/config.yaml"
 
     if [ "$MODE" = "alice" ]; then
-        SOCKS_PORT=""
-        while true; do
-            info "请为 Alice 模式选择 SOCKS5 出口端口:"
-            echo "  1) 香港机房IP (端口: 10000)"
-            echo "  2) 香港家宽   (端口: 20000)"
-            echo "  3) 台湾家宽   (端口: 30000)"
-            echo "  4) 新加坡     (端口: 10001)"
-            read -r -p "请输入选项 (1-4，默认为1): " port_choice
-
-            case "$port_choice" in
-                1|"")
-                    SOCKS_PORT=10000
-                    info "已选择端口: 10000 (香港机房IP)"
-                    break
-                    ;;
-                2)
-                    SOCKS_PORT=20000
-                    info "已选择端口: 20000 (香港家宽)"
-                    break
-                    ;;
-                3)
-                    SOCKS_PORT=30000
-                    info "已选择端口: 30000 (台湾家宽)"
-                    break
-                    ;;
-                4)
-                    SOCKS_PORT=10001
-                    info "已选择端口: 10001 (新加坡)"
-                    break
-                    ;;
-                *)
-                    error "无效的选择，请输入 1, 2, 3, 或 4。"
-                    ;;
-            esac
-        done
+        SOCKS_PORT=$(select_alice_port)
 
         cat > "$CONFIG_FILE" <<EOF
 tunnel:
@@ -347,14 +375,72 @@ EOF
     info "如需卸载，请运行：$0 -u"
 }
 
+switch_alice_port() {
+    CONFIG_FILE="/etc/tun2socks/config.yaml"
+    step "开始切换 Alice 模式 SOCKS5 端口..."
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        error "配置文件 $CONFIG_FILE 未找到。请先运行安装命令。"
+        exit 1
+    fi
+
+    if ! grep -q "alice" "$CONFIG_FILE"; then
+        error "此切换功能仅适用于 Alice 模式的配置。"
+        exit 1
+    fi
+
+    current_port=$(grep -oP 'port: \K[0-9]+' "$CONFIG_FILE" | head -n 1)
+    if [ -z "$current_port" ]; then
+        error "无法从配置文件中读取当前端口。"
+        exit 1
+    fi
+    info "当前 SOCKS5 端口: $current_port"
+
+    NEW_SOCKS_PORT=$(select_alice_port)
+
+    if [ "$NEW_SOCKS_PORT" = "$current_port" ]; then
+        info "选择的端口 ($NEW_SOCKS_PORT) 与当前配置相同，无需更改。"
+        exit 0
+    fi
+
+    step "正在停止 tun2socks 服务..."
+    if systemctl stop tun2socks.service; then
+        success "tun2socks 服务已停止。"
+    else
+        error "停止 tun2socks 服务失败。请检查服务状态。"
+    fi
+
+    step "正在更新配置文件 $CONFIG_FILE ..."
+    sed -i "s/port: $current_port/port: $NEW_SOCKS_PORT/" "$CONFIG_FILE"
+    if grep -q "port: $NEW_SOCKS_PORT" "$CONFIG_FILE"; then
+        success "配置文件已更新，新端口为: $NEW_SOCKS_PORT"
+    else
+        error "更新配置文件失败。请检查 $CONFIG_FILE 文件。"
+        warning "正在尝试以旧配置重启服务..."
+        systemctl start tun2socks.service
+        exit 1
+    fi
+    
+    step "正在启动 tun2socks 服务..."
+    if systemctl start tun2socks.service; then
+        success "tun2socks 服务已启动。"
+        success "SOCKS5 端口已成功切换至 $NEW_SOCKS_PORT。"
+    else
+        error "启动 tun2socks 服务失败。请使用 'systemctl status tun2socks.service' 和 'journalctl -u tun2socks.service' 查看详情。"
+        error "配置文件可能已更新为新端口 $NEW_SOCKS_PORT，但服务启动失败。"
+        exit 1
+    fi
+}
+
+
 if [ "$UNINSTALL" = true ]; then
     uninstall_tun2socks
-fi
-
-if [ "$INSTALL" = true ]; then
+elif [ "$INSTALL" = true ]; then
     if [ "$MODE" != "alice" ] && [ "$MODE" != "legend" ]; then
         error "无效的安装模式 '$MODE'，请使用 'alice' 或 'legend'"
         exit 1
     fi
     install_tun2socks
+elif [ "$SWITCH_CONFIG" = true ]; then
+    switch_alice_port
 fi
