@@ -1,16 +1,14 @@
 #!/bin/bash
 set -e
 
-# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# 格式化函数
 info() {
     echo -e "${BLUE}[信息]${NC} $1"
 }
@@ -31,13 +29,11 @@ step() {
     echo -e "${PURPLE}[步骤]${NC} $1"
 }
 
-# 检查是否以 root 身份运行
 if [ "$EUID" -ne 0 ]; then
     error "请使用 root 权限运行此脚本，例如: sudo $0"
     exit 1
 fi
 
-# 显示使用说明
 show_usage() {
     echo -e "${CYAN}使用方法:${NC} $0 [选项]"
     echo -e "${CYAN}选项:${NC}"
@@ -51,12 +47,10 @@ show_usage() {
     echo -e "  $0 -u          卸载 tun2socks"
 }
 
-# 默认参数
 INSTALL=false
 UNINSTALL=false
 MODE="alice"
 
-# 解析命令行参数
 while [[ $# -gt 0 ]]; do
     case $1 in
         -i|--install)
@@ -84,14 +78,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 检查是否指定了操作
 if [ "$INSTALL" = false ] && [ "$UNINSTALL" = false ]; then
     error "请指定安装 (-i) 或卸载 (-u) 操作"
     show_usage
     exit 1
 fi
 
-# 卸载函数
 uninstall_tun2socks() {
     SERVICE_FILE="/etc/systemd/system/tun2socks.service"
     CONFIG_DIR="/etc/tun2socks"
@@ -143,7 +135,6 @@ uninstall_tun2socks() {
     success "卸载完成。"
 }
 
-# 安装函数
 install_tun2socks() {
     RESOLV_CONF="/etc/resolv.conf"
     RESOLV_CONF_BAK="/etc/resolv.conf.bak"
@@ -162,7 +153,6 @@ install_tun2socks() {
     step "备份当前 DNS 配置..."
     cp "$RESOLV_CONF" "$RESOLV_CONF_BAK" || { warning "备份 DNS 配置失败，可能文件不存在或权限不足。"; }
 
-    # 根据模式设置 DNS 服务器
     if [ "$MODE" = "alice" ]; then
         step "设置 Alice DNS64 服务器..."
         cat > "$RESOLV_CONF" <<EOF
@@ -176,14 +166,12 @@ nameserver 2602:fc59:b0:9e::64
 EOF
     fi
 
-    # 配置参数
     REPO="heiher/hev-socks5-tunnel"
     INSTALL_DIR="/usr/local/bin"
     CONFIG_DIR="/etc/tun2socks"
     SERVICE_FILE="/etc/systemd/system/tun2socks.service"
     BINARY_PATH="$INSTALL_DIR/tun2socks"
 
-    # 获取最新版本 linux-x86_64 二进制下载链接
     step "获取最新版本下载链接..."
     DOWNLOAD_URL=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep "browser_download_url" | grep "linux-x86_64" | cut -d '"' -f 4)
 
@@ -194,10 +182,8 @@ EOF
 
     step "正在下载最新二进制文件："
     info "$DOWNLOAD_URL"
-    # 使用 trap 确保即使 curl 失败或被中断也能尝试恢复 DNS 和锁定状态
     trap 'warning "下载被中断或失败，尝试恢复 DNS..."; if [ -f "$RESOLV_CONF_BAK" ]; then mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"; if [ "$WAS_IMMUTABLE" = true ]; then chattr +i "$RESOLV_CONF"; fi; else warning "未找到备份，无法恢复。"; if [ "$WAS_IMMUTABLE" = true ]; then chattr +i "$RESOLV_CONF"; fi; fi; exit 1' INT TERM EXIT
     curl -L -o "$BINARY_PATH" "$DOWNLOAD_URL"
-    # 下载成功后清除 trap
     trap - INT TERM EXIT
 
     step "恢复原始 DNS 配置..."
@@ -205,7 +191,6 @@ EOF
         mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"
         success "DNS 配置已恢复。"
 
-        # 如果原来是锁定的，重新锁定
         if [ "$WAS_IMMUTABLE" = true ]; then
             info "重新锁定 /etc/resolv.conf..."
             chattr +i "$RESOLV_CONF" || warning "无法重新锁定 /etc/resolv.conf。"
@@ -225,9 +210,38 @@ EOF
     mkdir -p "$CONFIG_DIR"
     CONFIG_FILE="$CONFIG_DIR/config.yaml"
 
-    # 根据模式生成不同的配置文件
     if [ "$MODE" = "alice" ]; then
-        cat > "$CONFIG_FILE" <<'EOF'
+        SOCKS_PORT=""
+        while true; do
+            info "请为 Alice 模式选择 SOCKS5 出口端口:"
+            echo "  1) 香港机房IP (端口: 10000)"
+            echo "  2) 香港家宽   (端口: 20000)"
+            echo "  3) 台湾家宽   (端口: 30000)"
+            read -r -p "请输入选项 (1-3，默认为1): " port_choice
+
+            case "$port_choice" in
+                1|"")
+                    SOCKS_PORT=10000
+                    info "已选择端口: 10000 (香港机房IP)"
+                    break
+                    ;;
+                2)
+                    SOCKS_PORT=20000
+                    info "已选择端口: 20000 (香港家宽)"
+                    break
+                    ;;
+                3)
+                    SOCKS_PORT=30000
+                    info "已选择端口: 30000 (台湾家宽)"
+                    break
+                    ;;
+                *)
+                    error "无效的选择，请输入 1, 2, 或 3。"
+                    ;;
+            esac
+        done
+
+        cat > "$CONFIG_FILE" <<EOF
 tunnel:
   name: tun0
   mtu: 8500
@@ -235,11 +249,11 @@ tunnel:
   ipv4: 198.18.0.1
 
 socks5:
-  port: 40000
-  address: '2a14:67c0:100::af'
+  port: $SOCKS_PORT
+  address: '2a14:67c0:116::1'
   udp: 'udp'
   username: 'alice'
-  password: 'alicefofo123..@'
+  password: 'alicefofo123..OVO'
   mark: 438
 EOF
     else
@@ -260,7 +274,6 @@ EOF
 
     step "生成 systemd 服务文件 (tun2socks.service)..."
     
-    # 如果是 Alice 模式，添加主 IP 路由规则
     if [ "$MODE" = "alice" ]; then
         MAIN_IP=$(ip -4 route get 1.1.1.1 | awk '{print $7; exit}')
         RULE_ADD_FROM_MAIN_IP=""
@@ -328,7 +341,6 @@ EOF
     info "如需卸载，请运行：$0 -u"
 }
 
-# 执行操作
 if [ "$UNINSTALL" = true ]; then
     uninstall_tun2socks
 fi
@@ -339,4 +351,4 @@ if [ "$INSTALL" = true ]; then
         exit 1
     fi
     install_tun2socks
-fi 
+fi
