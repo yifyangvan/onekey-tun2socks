@@ -217,7 +217,8 @@ EOF
             echo "  1) 香港机房IP (端口: 10000)"
             echo "  2) 香港家宽   (端口: 20000)"
             echo "  3) 台湾家宽   (端口: 30000)"
-            read -r -p "请输入选项 (1-3，默认为1): " port_choice
+            echo "  4) 新加坡     (端口: 10001)"
+            read -r -p "请输入选项 (1-4，默认为1): " port_choice
 
             case "$port_choice" in
                 1|"")
@@ -235,8 +236,13 @@ EOF
                     info "已选择端口: 30000 (台湾家宽)"
                     break
                     ;;
+                4)
+                    SOCKS_PORT=10001
+                    info "已选择端口: 10001 (新加坡)"
+                    break
+                    ;;
                 *)
-                    error "无效的选择，请输入 1, 2, 或 3。"
+                    error "无效的选择，请输入 1, 2, 3, 或 4。"
                     ;;
             esac
         done
