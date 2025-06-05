@@ -38,11 +38,14 @@ select_alice_port() {
     local selected_port=""
     while true; do
         info "请为 Alice 模式选择 SOCKS5 出口端口:" >&2
-        echo "  1) 香港机房IP (端口: 10000)" >&2
-        echo "  2) 香港家宽   (端口: 20000)" >&2
-        echo "  3) 台湾家宽   (端口: 30000)" >&2
-        echo "  4) 新加坡     (端口: 10001)" >&2
-        read -r -p "请输入选项 (1-4，默认为1): " port_choice
+        printf "  %s\n" \
+            "1) 香港机房IP       (端口: 10000)" \
+            "2) 新加坡机房IP     (端口: 10001)" \
+            "3) 香港HKBN家宽     (端口: 20000)" \
+            "4) 香港i-Cable家宽  (端口: 20001)" \
+            "5) 台湾Hinet家宽    (端口: 30000)" \
+            "6) 越南家宽         (端口: 40000)" >&2
+        read -r -p "请输入选项 (1-6，默认为1): " port_choice
 
         case "$port_choice" in
             1|"")
@@ -51,22 +54,32 @@ select_alice_port() {
                 break
                 ;;
             2)
-                selected_port=20000
-                info "已选择端口: 20000 (香港家宽)" >&2
+                selected_port=10001
+                info "已选择端口: 10001 (新加坡机房IP)" >&2
                 break
                 ;;
             3)
-                selected_port=30000
-                info "已选择端口: 30000 (台湾家宽)" >&2
+                selected_port=20000
+                info "已选择端口: 20000 (香港HKBN家宽)" >&2
                 break
                 ;;
             4)
-                selected_port=10001
-                info "已选择端口: 10001 (新加坡)" >&2
+                selected_port=20001
+                info "已选择端口: 20001 (香港i-Cable家宽)" >&2
+                break
+                ;;
+            5)
+                selected_port=30000
+                info "已选择端口: 30000 (台湾Hinet家宽)" >&2
+                break
+                ;;
+            6)
+                selected_port=40000
+                info "已选择端口: 40000 (越南家宽)" >&2
                 break
                 ;;
             *)
-                error "无效的选择，请输入 1, 2, 3, 或 4。" >&2
+                error "无效的选择，请输入 1 到 6 之间的数字。" >&2
                 ;;
         esac
     done
