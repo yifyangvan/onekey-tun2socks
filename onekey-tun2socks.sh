@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 check_for_updates() {
@@ -13,7 +13,7 @@ check_for_updates() {
         exit 1
     fi
 
-    REMOTE_VERSION=$(echo "$REMOTE_SCRIPT_CONTENT" | grep 'VERSION=' | cut -d '"' -f 2)
+    REMOTE_VERSION=$(echo "$REMOTE_SCRIPT_CONTENT" | grep -m 1 '^VERSION=' | cut -d '"' -f 2 | tr -d '\r')
 
     if [ -z "$REMOTE_VERSION" ]; then
         error "无法从远程脚本中提取版本号。"
@@ -22,13 +22,6 @@ check_for_updates() {
 
     info "当前版本: $VERSION"
     info "最新版本: $REMOTE_VERSION"
-
-    info "--- DEBUG START ---"
-    info "Local version hex:"
-    echo -n "$VERSION" | od -c
-    info "Remote version hex:"
-    echo -n "$REMOTE_VERSION" | od -c
-    info "--- DEBUG END ---"
 
     if [ "$REMOTE_VERSION" = "$VERSION" ]; then
         success "您的脚本已是最新版本。"
