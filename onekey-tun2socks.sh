@@ -1,6 +1,84 @@
 #!/bin/bash
 set -e
 
+VERSION="1.0.0"
+SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
+
+check_for_updates() {
+    step "正在检查脚本更新..."
+    
+    REMOTE_SCRIPT_CONTENT=$(curl -s "$SCRIPT_URL")
+    if [ -z "$REMOTE_SCRIPT_CONTENT" ]; then
+        error "无法从 $SCRIPT_URL 获取脚本内容。请检查网络连接或 URL 是否正确。"
+        exit 1
+    fi
+
+    REMOTE_VERSION=$(echo "$REMOTE_SCRIPT_CONTENT" | grep 'VERSION=' | cut -d '"' -f 2)
+
+    if [ -z "$REMOTE_VERSION" ]; then
+        error "无法从远程脚本中提取版本号。"
+        exit 1
+    fi
+
+    info "当前版本: $VERSION"
+    info "最新版本: $REMOTE_VERSION"
+
+    info "--- DEBUG START ---"
+    info "Local version hex:"
+    echo -n "$VERSION" | od -c
+    info "Remote version hex:"
+    echo -n "$REMOTE_VERSION" | od -c
+    info "--- DEBUG END ---"
+
+    if [ "$REMOTE_VERSION" = "$VERSION" ]; then
+        success "您的脚本已是最新版本。"
+        exit 0
+    fi
+
+    if [ "$(printf '%s\n' "$REMOTE_VERSION" "$VERSION" | sort -V | head -n1)" = "$REMOTE_VERSION" ]; then
+        success "您的脚本版本 ($VERSION) 高于远程版本 ($REMOTE_VERSION)，无需更新。"
+        exit 0
+    fi
+
+    warning "发现新版本 ($REMOTE_VERSION)。"
+    read -r -p "您想现在更新吗? (y/N): " response
+    if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        info "更新已取消。"
+        exit 0
+    fi
+
+    step "正在下载新版本..."
+    TEMP_FILE="/tmp/onekey-tun2socks.sh.new"
+    if ! curl -L -o "$TEMP_FILE" "$SCRIPT_URL"; then
+        error "下载新版本失败。"
+        rm -f "$TEMP_FILE"
+        exit 1
+    fi
+
+    if ! head -n 1 "$TEMP_FILE" | grep -q "bin/bash"; then
+        error "下载的文件似乎不是一个有效的脚本。更新已中止以确保安全。"
+        rm -f "$TEMP_FILE"
+        exit 1
+    fi
+
+    step "正在替换旧脚本..."
+    SCRIPT_PATH=$(realpath "$0")
+    if ! mv "$TEMP_FILE" "$SCRIPT_PATH"; then
+        error "替换脚本失败。请检查权限。"
+        rm -f "$TEMP_FILE"
+        exit 1
+    fi
+
+    step "设置执行权限..."
+    if ! chmod +x "$SCRIPT_PATH"; then
+        warning "无法为新脚本设置执行权限。您可能需要手动执行 'chmod +x $SCRIPT_PATH'。"
+    fi
+
+    success "脚本已成功更新到版本 $REMOTE_VERSION。"
+    info "请重新运行脚本以使用新版本: $SCRIPT_PATH"
+    exit 0
+}
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -90,20 +168,23 @@ show_usage() {
     echo -e "${CYAN}使用方法:${NC} $0 [选项]"
     echo -e "${CYAN}选项:${NC}"
     echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice 或 legend)"
-    echo -e "  ${GREEN}-u, --uninstall${NC}  卸载 tun2socks"
+    echo -e "  ${GREEN}-r, --remove${NC}     卸载 tun2socks"
     echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 Socks5 端口 (如果已安装)"
+    echo -e "  ${GREEN}-u, --update${NC}     检查并更新脚本"
     echo -e "  ${GREEN}-h, --help${NC}       显示此帮助信息"
     echo
     echo -e "${CYAN}示例:${NC}"
     echo -e "  $0 -i alice    安装 Alice 版本的 tun2socks"
     echo -e "  $0 -i legend   安装 Legend 版本的 tun2socks"
-    echo -e "  $0 -u          卸载 tun2socks"
+    echo -e "  $0 -r          卸载 tun2socks"
     echo -e "  $0 -s          切换 Alice 模式的 Socks5 端口"
+    echo -e "  $0 -u          检查脚本更新"
 }
 
 INSTALL=false
 UNINSTALL=false
 SWITCH_CONFIG=false
+UPDATE=false
 MODE="alice"
 
 while [[ $# -gt 0 ]]; do
@@ -117,7 +198,7 @@ while [[ $# -gt 0 ]]; do
                 shift
             fi
             ;;
-        -u|--uninstall)
+        -r|--remove)
             UNINSTALL=true
             shift
             ;;
@@ -128,6 +209,10 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             show_usage
             exit 0
+            ;;
+        -u|--update)
+            UPDATE=true
+            shift
             ;;
         *)
             error "未知选项: $1"
@@ -141,13 +226,14 @@ operation_count=0
 if [ "$INSTALL" = true ]; then operation_count=$((operation_count + 1)); fi
 if [ "$UNINSTALL" = true ]; then operation_count=$((operation_count + 1)); fi
 if [ "$SWITCH_CONFIG" = true ]; then operation_count=$((operation_count + 1)); fi
+if [ "$UPDATE" = true ]; then operation_count=$((operation_count + 1)); fi
 
 if [ "$operation_count" -eq 0 ]; then
-    error "请指定一个操作: 安装 (-i), 卸载 (-u), 或切换端口 (-s)"
+    error "请指定一个操作: 安装 (-i), 卸载 (-r), 切换端口 (-s), 或更新 (-u)"
     show_usage
     exit 1
 elif [ "$operation_count" -gt 1 ]; then
-    error "请仅指定一个主要操作: 安装 (-i), 卸载 (-u), 或切换端口 (-s)"
+    error "请仅指定一个主要操作: 安装 (-i), 卸载 (-r), 切换端口 (-s), 或更新 (-u)"
     show_usage
     exit 1
 fi
@@ -397,7 +483,7 @@ EOF
     echo -e "  ${GREEN}程序配置${NC}：/etc/tun2socks/config.yaml"
     echo -e "  ${GREEN}程序位置${NC}：/usr/local/bin/tun2socks"
     echo
-    info "如需卸载，请运行：$0 -u"
+    info "如需卸载，请运行：$0 -r"
 }
 
 switch_alice_port() {
@@ -468,4 +554,6 @@ elif [ "$INSTALL" = true ]; then
     install_tun2socks
 elif [ "$SWITCH_CONFIG" = true ]; then
     switch_alice_port
+elif [ "$UPDATE" = true ]; then
+    check_for_updates
 fi

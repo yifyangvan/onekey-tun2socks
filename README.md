@@ -16,7 +16,7 @@ curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-t
 
 ### 卸载
 ```bash
-curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -u
+curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -r
 ```
 
 ## 手动下载运行
@@ -47,8 +47,11 @@ sudo ./onekey-tun2socks.sh -i legend
 # 变更 Alice 出口
 sudo ./onekey-tun2socks.sh -s
 
-# 卸载
+# 检查更新
 sudo ./onekey-tun2socks.sh -u
+
+# 卸载
+sudo ./onekey-tun2socks.sh -r
 ```
 
 ## 服务管理
