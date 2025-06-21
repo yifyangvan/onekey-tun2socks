@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.1"
+VERSION="1.0.2"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 check_for_updates() {
@@ -110,47 +110,41 @@ select_alice_port() {
     while true; do
         info "请为 Alice 模式选择 Socks5 出口端口:" >&2
         printf "  %s\n" \
-            "1) 香港机房IP       (端口: 10000)" \
-            "2) 新加坡机房IP     (端口: 10001)" \
-            "3) 香港家宽         (端口: 20000)" \
-            "4) 台湾家宽         (端口: 30000)" \
-            "5) 越南家宽         (端口: 40000)" \
-            "6) 日本家宽         (端口: 50000)" >&2
-        read -r -p "请输入选项 (1-6，默认为1): " port_choice
+            "1) 新加坡机房IP     (端口: 10001)" \
+            "2) 香港家宽         (端口: 20000)" \
+            "3) 台湾家宽         (端口: 30000)" \
+            "4) 越南家宽         (端口: 40000)" \
+            "5) 日本家宽         (端口: 50000)" >&2
+        read -r -p "请输入选项 (1-5，默认为1): " port_choice
 
         case "$port_choice" in
             1|"")
-                selected_port=10000
-                info "已选择端口: 10000 (香港机房IP)" >&2
-                break
-                ;;
-            2)
                 selected_port=10001
                 info "已选择端口: 10001 (新加坡机房IP)" >&2
                 break
                 ;;
-            3)
+            2)
                 selected_port=20000
                 info "已选择端口: 20000 (香港家宽)" >&2
                 break
                 ;;
-            4)
+            3)
                 selected_port=30000
                 info "已选择端口: 30000 (台湾家宽)" >&2
                 break
                 ;;
-            5)
+            4)
                 selected_port=40000
                 info "已选择端口: 40000 (越南家宽)" >&2
                 break
                 ;;
-            6)
+            5)
                 selected_port=50000
                 info "已选择端口: 50000 (日本家宽)" >&2
                 break
                 ;;
             *)
-                error "无效的选择，请输入 1 到 6 之间的数字。" >&2
+                error "无效的选择，请输入 1 到 5 之间的数字。" >&2
                 ;;
         esac
     done
