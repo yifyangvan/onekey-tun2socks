@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.2"
+VERSION="1.0.3"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 check_for_updates() {
@@ -407,7 +407,7 @@ EOF
     step "生成 systemd 服务文件 (tun2socks.service)..."
     
     if [ "$MODE" = "alice" ]; then
-        MAIN_IP=$(ip -4 route get 1.1.1.1 | awk '{print $7; exit}')
+        MAIN_IP=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
         RULE_ADD_FROM_MAIN_IP=""
         RULE_DEL_FROM_MAIN_IP=""
 
@@ -450,7 +450,7 @@ EOF
     systemctl daemon-reload
 
     step "设置服务开机自启动..."
-    systemctl enable tun2socks.service
+    systemctl enable tun2socks.service 2>/dev/null
 
     step "启动服务..."
     systemctl start tun2socks.service
