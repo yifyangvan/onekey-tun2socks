@@ -1,6 +1,8 @@
 # 给免费机一键添加Socks5 IPv4出口
 
 ## 更新日志
+v1.0.4 修复原先systemd中的错误，并在启用tun设备后增加1秒延时
+
 v1.0.3 解决无IPv4的机子'RTNETLINK answers: Network is unreachable'报错（其实报错也无影响）
 
 v1.0.2 更新Alice出口（移除香港机房IP）

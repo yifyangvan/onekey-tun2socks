@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.3"
+VERSION="1.0.4"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 check_for_updates() {
@@ -426,8 +426,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStartPost=/bin/sleep 0.1
 ExecStart=$BINARY_PATH $CONFIG_FILE
+ExecStartPost=/bin/sleep 1
 
 ExecStartPost=/sbin/ip rule add fwmark 438 lookup main pref 10
 ExecStartPost=/sbin/ip -6 rule add fwmark 438 lookup main pref 10
@@ -435,8 +435,8 @@ ExecStartPost=/sbin/ip route add default dev tun0 table 20
 ExecStartPost=/sbin/ip rule add lookup 20 pref 20
 ${RULE_ADD_FROM_MAIN_IP}
 
-ExecStartPost=/sbin/ip rule del fwmark 438 lookup main pref 10
-ExecStartPost=/sbin/ip -6 rule del fwmark 438 lookup main pref 10
+ExecStop=/sbin/ip rule del fwmark 438 lookup main pref 10
+ExecStop=/sbin/ip -6 rule del fwmark 438 lookup main pref 10
 ExecStop=/sbin/ip route del default dev tun0 table 20
 ExecStop=/sbin/ip rule del lookup 20 pref 20
 ${RULE_DEL_FROM_MAIN_IP}
