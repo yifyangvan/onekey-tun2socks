@@ -426,6 +426,7 @@ After=network.target
 
 [Service]
 Type=simple
+ExecStartPost=/bin/sleep 0.1
 ExecStart=$BINARY_PATH $CONFIG_FILE
 
 ExecStartPost=/sbin/ip rule add fwmark 438 lookup main pref 10
