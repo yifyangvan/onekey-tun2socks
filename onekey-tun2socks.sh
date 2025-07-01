@@ -4,6 +4,15 @@ set -e
 VERSION="1.0.4"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
+# 备用DNS64服务器
+ALTERNATE_DNS64_SERVERS=(
+    "2a00:1098:2b::1"
+    "2a01:4f8:c2c:123f::1"
+    "2a01:4f9:c010:3f02::1"
+    "2001:67c:2b0::4"
+    "2001:67c:2b0::6"
+)
+
 check_for_updates() {
     step "正在检查脚本更新..."
     
@@ -168,6 +177,92 @@ show_usage() {
     echo -e "  $0 -u          检查脚本更新"
 }
 
+test_dns64_server() {
+    local dns_server=$1
+    step "正在测试DNS64服务器 $dns_server 的连通性..."
+    
+    if ping6 -c 3 -W 2 "$dns_server" &>/dev/null; then
+        info "DNS64服务器 $dns_server 可达。"
+        return 0
+    else
+        warning "DNS64服务器 $dns_server 不可达。"
+        return 1
+    fi
+}
+
+test_github_access() {
+    step "正在测试GitHub访问..."
+    if curl -s -m 10 https://github.com >/dev/null; then
+        success "GitHub访问测试成功。"
+        return 0
+    else
+        warning "GitHub访问测试失败。"
+        return 1
+    fi
+}
+
+set_dns64_servers() {
+    local mode=$1
+    local resolv_conf=$2
+    local was_immutable=$3
+    local resolv_conf_bak=$4
+    
+    if [ "$mode" = "alice" ]; then
+        step "设置 Alice DNS64 服务器..."
+        cat > "$resolv_conf" <<EOF
+nameserver 2602:fc59:b0:9e::64
+nameserver 2a14:67c0:103:c::a
+EOF
+    else
+        step "设置 Legend DNS64 服务器..."
+        cat > "$resolv_conf" <<EOF
+nameserver 2602:fc59:b0:9e::64
+EOF
+    fi
+    
+    if test_github_access; then
+        return 0
+    fi
+    
+    warning "主DNS64服务器访问GitHub失败，尝试备选DNS64服务器..."
+    
+    for dns_server in "${ALTERNATE_DNS64_SERVERS[@]}"; do
+        if test_dns64_server "$dns_server"; then
+            step "使用备选DNS64服务器: $dns_server"
+            cat > "$resolv_conf" <<EOF
+nameserver $dns_server
+EOF
+            
+            if test_github_access; then
+                success "使用备选DNS64服务器 $dns_server 成功访问GitHub。"
+                return 0
+            fi
+        fi
+    done
+    
+    error "所有DNS64服务器测试失败，无法访问GitHub。"
+    
+    step "恢复原始 DNS 配置..."
+    if [ -f "$resolv_conf_bak" ]; then
+        mv "$resolv_conf_bak" "$resolv_conf"
+        success "DNS 配置已恢复。"
+
+        if [ "$was_immutable" = true ]; then
+            info "重新锁定 /etc/resolv.conf..."
+            chattr +i "$resolv_conf" || warning "无法重新锁定 /etc/resolv.conf。"
+            success "锁定完成。"
+        fi
+    else
+        warning "未找到 DNS 备份文件 ($resolv_conf_bak)，无法自动恢复。"
+        if [ "$was_immutable" = true ]; then
+             warning "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
+             chattr +i "$resolv_conf" || warning "无法锁定 /etc/resolv.conf。"
+        fi
+    fi
+    
+    return 1
+}
+
 INSTALL=false
 UNINSTALL=false
 SWITCH_CONFIG=false
@@ -313,17 +408,8 @@ install_tun2socks() {
     step "备份当前 DNS 配置..."
     cp "$RESOLV_CONF" "$RESOLV_CONF_BAK" || { warning "备份 DNS 配置失败，可能文件不存在或权限不足。"; }
 
-    if [ "$MODE" = "alice" ]; then
-        step "设置 Alice DNS64 服务器..."
-        cat > "$RESOLV_CONF" <<EOF
-nameserver 2602:fc59:b0:9e::64
-nameserver 2a14:67c0:103:c::a
-EOF
-    else
-        step "设置 Legend DNS64 服务器..."
-        cat > "$RESOLV_CONF" <<EOF
-nameserver 2602:fc59:b0:9e::64
-EOF
+    if ! set_dns64_servers "$MODE" "$RESOLV_CONF" "$WAS_IMMUTABLE" "$RESOLV_CONF_BAK"; then
+        exit 1
     fi
 
     REPO="heiher/hev-socks5-tunnel"
@@ -337,6 +423,25 @@ EOF
 
     if [ -z "$DOWNLOAD_URL" ]; then
         error "未找到适用于 linux-x86_64 的二进制文件下载链接，请检查网络或手动下载。"
+        
+        step "恢复原始 DNS 配置..."
+        if [ -f "$RESOLV_CONF_BAK" ]; then
+            mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"
+            success "DNS 配置已恢复。"
+
+            if [ "$WAS_IMMUTABLE" = true ]; then
+                info "重新锁定 /etc/resolv.conf..."
+                chattr +i "$RESOLV_CONF" || warning "无法重新锁定 /etc/resolv.conf。"
+                success "锁定完成。"
+            fi
+        else
+            warning "未找到 DNS 备份文件 ($RESOLV_CONF_BAK)，无法自动恢复。"
+            if [ "$WAS_IMMUTABLE" = true ]; then
+                 warning "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
+                 chattr +i "$RESOLV_CONF" || warning "无法锁定 /etc/resolv.conf。"
+            fi
+        fi
+        
         exit 1
     fi
 
