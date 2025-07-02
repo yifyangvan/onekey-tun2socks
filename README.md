@@ -1,7 +1,11 @@
 # 给免费机一键添加Socks5 IPv4出口
 
 ## 更新日志
-v1.0.4 修复原先systemd中的错误，并在启用tun设备后增加1秒延时
+v1.0.6 无聊的更新（重构了一些函数）
+
+v1.0.5 新增备用DNS64服务器组（@baipiaoking88）
+
+v1.0.4 修复原先systemd中的错误，并在启用tun设备后增加1秒延时（@baipiaoking88）
 
 v1.0.3 解决无IPv4的机子'RTNETLINK answers: Network is unreachable'报错（其实报错也无影响）
 

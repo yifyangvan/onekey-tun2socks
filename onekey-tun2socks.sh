@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.4"
+VERSION="1.0.6"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 # 备用DNS64服务器
@@ -115,49 +115,32 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 select_alice_port() {
-    local selected_port=""
-    while true; do
-        info "请为 Alice 模式选择 Socks5 出口端口:" >&2
-        printf "  %s\n" \
-            "1) 新加坡机房IP     (端口: 10001)" \
-            "2) 香港家宽         (端口: 20000)" \
-            "3) 台湾家宽         (端口: 30000)" \
-            "4) 越南家宽         (端口: 40000)" \
-            "5) 日本家宽         (端口: 50000)" >&2
-        read -r -p "请输入选项 (1-5，默认为1): " port_choice
-
-        case "$port_choice" in
-            1|"")
-                selected_port=10001
-                info "已选择端口: 10001 (新加坡机房IP)" >&2
-                break
-                ;;
-            2)
-                selected_port=20000
-                info "已选择端口: 20000 (香港家宽)" >&2
-                break
-                ;;
-            3)
-                selected_port=30000
-                info "已选择端口: 30000 (台湾家宽)" >&2
-                break
-                ;;
-            4)
-                selected_port=40000
-                info "已选择端口: 40000 (越南家宽)" >&2
-                break
-                ;;
-            5)
-                selected_port=50000
-                info "已选择端口: 50000 (日本家宽)" >&2
-                break
-                ;;
-            *)
-                error "无效的选择，请输入 1 到 5 之间的数字。" >&2
-                ;;
-        esac
+    local options=(
+        "新加坡机房IP:10001"
+        "香港家宽:20000"
+        "台湾家宽:30000"
+        "越南家宽:40000"
+        "日本家宽:50000"
+    )
+    info "请为 Alice 模式选择 Socks5 出口端口:" >&2
+    for i in "${!options[@]}"; do
+        printf "  %s) %s (端口: %s)\n" "$((i+1))" "${options[$i]%%:*}" "${options[$i]#*:}" >&2
     done
-    echo "$selected_port"
+
+    local choice
+    while true; do
+        read -r -p "请输入选项 (1-${#options[@]}，默认为1): " choice
+        choice=${choice:-1}
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#options[@]} ]; then
+            local selected_option="${options[$((choice-1))]}"
+            local port="${selected_option#*:}"
+            info "已选择端口: $port (${selected_option%%:*})" >&2
+            echo "$port"
+            return
+        else
+            error "无效的选择，请输入 1 到 ${#options[@]} 之间的数字。" >&2
+        fi
+    done
 }
 
 show_usage() {
@@ -242,6 +225,16 @@ EOF
     
     error "所有DNS64服务器测试失败，无法访问GitHub。"
     
+    restore_dns_config "$resolv_conf" "$resolv_conf_bak" "$was_immutable"
+    
+    return 1
+}
+
+restore_dns_config() {
+    local resolv_conf=$1
+    local resolv_conf_bak=$2
+    local was_immutable=$3
+
     step "恢复原始 DNS 配置..."
     if [ -f "$resolv_conf_bak" ]; then
         mv "$resolv_conf_bak" "$resolv_conf"
@@ -259,8 +252,6 @@ EOF
              chattr +i "$resolv_conf" || warning "无法锁定 /etc/resolv.conf。"
         fi
     fi
-    
-    return 1
 }
 
 INSTALL=false
@@ -424,50 +415,24 @@ install_tun2socks() {
     if [ -z "$DOWNLOAD_URL" ]; then
         error "未找到适用于 linux-x86_64 的二进制文件下载链接，请检查网络或手动下载。"
         
-        step "恢复原始 DNS 配置..."
-        if [ -f "$RESOLV_CONF_BAK" ]; then
-            mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"
-            success "DNS 配置已恢复。"
-
-            if [ "$WAS_IMMUTABLE" = true ]; then
-                info "重新锁定 /etc/resolv.conf..."
-                chattr +i "$RESOLV_CONF" || warning "无法重新锁定 /etc/resolv.conf。"
-                success "锁定完成。"
-            fi
-        else
-            warning "未找到 DNS 备份文件 ($RESOLV_CONF_BAK)，无法自动恢复。"
-            if [ "$WAS_IMMUTABLE" = true ]; then
-                 warning "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
-                 chattr +i "$RESOLV_CONF" || warning "无法锁定 /etc/resolv.conf。"
-            fi
-        fi
+        restore_dns_config "$RESOLV_CONF" "$RESOLV_CONF_BAK" "$WAS_IMMUTABLE"
         
         exit 1
     fi
 
     step "正在下载最新二进制文件："
     info "$DOWNLOAD_URL"
-    trap 'warning "下载被中断或失败，尝试恢复 DNS..."; if [ -f "$RESOLV_CONF_BAK" ]; then mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"; if [ "$WAS_IMMUTABLE" = true ]; then chattr +i "$RESOLV_CONF"; fi; else warning "未找到备份，无法恢复。"; if [ "$WAS_IMMUTABLE" = true ]; then chattr +i "$RESOLV_CONF"; fi; fi; exit 1' INT TERM EXIT
+    cleanup_on_fail() {
+        trap - INT TERM EXIT
+        warning "操作被中断或失败，正在执行清理..."
+        restore_dns_config "$RESOLV_CONF" "$RESOLV_CONF_BAK" "$WAS_IMMUTABLE"
+        exit 1
+    }
+    trap cleanup_on_fail INT TERM EXIT
     curl -L -o "$BINARY_PATH" "$DOWNLOAD_URL"
     trap - INT TERM EXIT
 
-    step "恢复原始 DNS 配置..."
-    if [ -f "$RESOLV_CONF_BAK" ]; then
-        mv "$RESOLV_CONF_BAK" "$RESOLV_CONF"
-        success "DNS 配置已恢复。"
-
-        if [ "$WAS_IMMUTABLE" = true ]; then
-            info "重新锁定 /etc/resolv.conf..."
-            chattr +i "$RESOLV_CONF" || warning "无法重新锁定 /etc/resolv.conf。"
-            success "锁定完成。"
-        fi
-    else
-        warning "未找到 DNS 备份文件 ($RESOLV_CONF_BAK)，无法自动恢复。"
-        if [ "$WAS_IMMUTABLE" = true ]; then
-             warning "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
-             chattr +i "$RESOLV_CONF" || warning "无法锁定 /etc/resolv.conf。"
-        fi
-    fi
+    restore_dns_config "$RESOLV_CONF" "$RESOLV_CONF_BAK" "$WAS_IMMUTABLE"
 
     chmod +x "$BINARY_PATH"
 
