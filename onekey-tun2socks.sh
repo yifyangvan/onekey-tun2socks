@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.6"
+VERSION="1.0.7"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 # 备用DNS64服务器
@@ -193,7 +193,7 @@ set_dns64_servers() {
     if [ "$mode" = "alice" ]; then
         step "设置 Alice DNS64 服务器..."
         cat > "$resolv_conf" <<EOF
-nameserver 2602:fc59:b0:9e::64
+nameserver 2602:f92a:220:169:169:64:64:1
 nameserver 2a14:67c0:103:c::a
 EOF
     else
