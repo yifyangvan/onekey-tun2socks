@@ -1,10 +1,22 @@
 #!/bin/bash
 set -e
 
-VERSION="1.0.7"
+#================================================================================
+# 常量和全局变量
+#================================================================================
+VERSION="1.0.8"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
-# 备用DNS64服务器
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# 备用 DNS64 服务器
 ALTERNATE_DNS64_SERVERS=(
     "2a00:1098:2b::1"
     "2a01:4f8:c2c:123f::1"
@@ -12,6 +24,139 @@ ALTERNATE_DNS64_SERVERS=(
     "2001:67c:2b0::4"
     "2001:67c:2b0::6"
 )
+
+# 脚本操作的全局变量
+ACTION=""
+MODE="alice" # 默认安装模式
+
+#================================================================================
+# 日志和工具函数
+#================================================================================
+info() { echo -e "${BLUE}[信息]${NC} $1"; }
+success() { echo -e "${GREEN}[成功]${NC} $1"; }
+warning() { echo -e "${YELLOW}[警告]${NC} $1"; }
+error() { echo -e "${RED}[错误]${NC} $1"; }
+step() { echo -e "${PURPLE}[步骤]${NC} $1"; }
+
+require_root() {
+    if [ "$EUID" -ne 0 ]; then
+        error "请使用 root 权限运行此脚本，例如: sudo $0"
+        exit 1
+    fi
+}
+
+show_usage() {
+    echo -e "${CYAN}使用方法:${NC} $0 [选项]"
+    echo -e "${CYAN}选项:${NC}"
+    echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice 或 legend)"
+    echo -e "  ${GREEN}-r, --remove${NC}     卸载 tun2socks"
+    echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 Socks5 端口 (如果已安装)"
+    echo -e "  ${GREEN}-u, --update${NC}     检查并更新脚本"
+    echo -e "  ${GREEN}-h, --help${NC}       显示此帮助信息"
+    echo
+    echo -e "${CYAN}示例:${NC}"
+    echo -e "  $0 -i alice    安装 Alice 版本的 tun2socks"
+    echo -e "  $0 -i legend   安装 Legend 版本的 tun2socks"
+    echo -e "  $0 -r          卸载 tun2socks"
+    echo -e "  $0 -s          切换 Alice 模式的 Socks5 端口"
+    echo -e "  $0 -u          检查脚本更新"
+}
+
+test_dns64_server() {
+    local dns_server=$1
+    step "正在测试DNS64服务器 $dns_server 的连通性..."
+    
+    if ping6 -c 3 -W 2 "$dns_server" &>/dev/null; then
+        info "DNS64服务器 $dns_server 可达。"
+        return 0
+    else
+        warning "DNS64服务器 $dns_server 不可达。"
+        return 1
+    fi
+}
+
+test_github_access() {
+    step "正在测试GitHub访问..."
+    if curl -s -m 10 https://github.com >/dev/null; then
+        success "GitHub访问测试成功。"
+        return 0
+    else
+        warning "GitHub访问测试失败。"
+        return 1
+    fi
+}
+
+restore_dns_config() {
+    local resolv_conf=$1
+    local resolv_conf_bak=$2
+    local was_immutable=$3
+
+    step "恢复原始 DNS 配置..."
+    if [ -f "$resolv_conf_bak" ]; then
+        mv "$resolv_conf_bak" "$resolv_conf"
+        success "DNS 配置已恢复。"
+
+        if [ "$was_immutable" = true ]; then
+            info "重新锁定 /etc/resolv.conf..."
+            chattr +i "$resolv_conf" || warning "无法重新锁定 /etc/resolv.conf。"
+            success "锁定完成。"
+        fi
+    else
+        warning "未找到 DNS 备份文件 ($resolv_conf_bak)，无法自动恢复。"
+        if [ "$was_immutable" = true ]; then
+             warning "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
+             chattr +i "$resolv_conf" || warning "无法锁定 /etc/resolv.conf。"
+        fi
+    fi
+}
+
+set_dns64_servers() {
+    local mode=$1
+    local resolv_conf=$2
+    local was_immutable=$3
+    local resolv_conf_bak=$4
+    
+    step "设置 DNS64 服务器（用于下载tun2socks）..."
+    if [ "$mode" = "alice" ]; then
+        cat > "$resolv_conf" <<EOF
+nameserver 2602:f92a:220:169:169:64:64:1
+EOF
+    else
+        cat > "$resolv_conf" <<EOF
+nameserver 2602:fc59:b0:9e::64
+EOF
+    fi
+    
+    if test_github_access; then
+        return 0
+    fi
+    
+    warning "主DNS64服务器访问GitHub失败，尝试备选DNS64服务器..."
+    
+    for dns_server in "${ALTERNATE_DNS64_SERVERS[@]}"; do
+        if test_dns64_server "$dns_server"; then
+            step "使用备选DNS64服务器: $dns_server"
+            cat > "$resolv_conf" <<EOF
+nameserver $dns_server
+EOF
+            
+            if test_github_access; then
+                success "使用备选DNS64服务器 $dns_server 成功访问GitHub。"
+                return 0
+            fi
+        fi
+    done
+    
+    error "所有DNS64服务器测试失败，无法访问GitHub。"
+    
+    restore_dns_config "$resolv_conf" "$resolv_conf_bak" "$was_immutable"
+    
+    return 1
+}
+
+#================================================================================
+# 核心逻辑函数
+#================================================================================
 
 check_for_updates() {
     step "正在检查脚本更新..."
@@ -81,39 +226,6 @@ check_for_updates() {
     exit 0
 }
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-info() {
-    echo -e "${BLUE}[信息]${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}[成功]${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}[警告]${NC} $1"
-}
-
-error() {
-    echo -e "${RED}[错误]${NC} $1"
-}
-
-step() {
-    echo -e "${PURPLE}[步骤]${NC} $1"
-}
-
-if [ "$EUID" -ne 0 ]; then
-    error "请使用 root 权限运行此脚本，例如: sudo $0"
-    exit 1
-fi
-
 select_alice_port() {
     local options=(
         "新加坡机房IP:10001"
@@ -143,181 +255,6 @@ select_alice_port() {
     done
 }
 
-show_usage() {
-    echo -e "${CYAN}使用方法:${NC} $0 [选项]"
-    echo -e "${CYAN}选项:${NC}"
-    echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice 或 legend)"
-    echo -e "  ${GREEN}-r, --remove${NC}     卸载 tun2socks"
-    echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 Socks5 端口 (如果已安装)"
-    echo -e "  ${GREEN}-u, --update${NC}     检查并更新脚本"
-    echo -e "  ${GREEN}-h, --help${NC}       显示此帮助信息"
-    echo
-    echo -e "${CYAN}示例:${NC}"
-    echo -e "  $0 -i alice    安装 Alice 版本的 tun2socks"
-    echo -e "  $0 -i legend   安装 Legend 版本的 tun2socks"
-    echo -e "  $0 -r          卸载 tun2socks"
-    echo -e "  $0 -s          切换 Alice 模式的 Socks5 端口"
-    echo -e "  $0 -u          检查脚本更新"
-}
-
-test_dns64_server() {
-    local dns_server=$1
-    step "正在测试DNS64服务器 $dns_server 的连通性..."
-    
-    if ping6 -c 3 -W 2 "$dns_server" &>/dev/null; then
-        info "DNS64服务器 $dns_server 可达。"
-        return 0
-    else
-        warning "DNS64服务器 $dns_server 不可达。"
-        return 1
-    fi
-}
-
-test_github_access() {
-    step "正在测试GitHub访问..."
-    if curl -s -m 10 https://github.com >/dev/null; then
-        success "GitHub访问测试成功。"
-        return 0
-    else
-        warning "GitHub访问测试失败。"
-        return 1
-    fi
-}
-
-set_dns64_servers() {
-    local mode=$1
-    local resolv_conf=$2
-    local was_immutable=$3
-    local resolv_conf_bak=$4
-    
-    if [ "$mode" = "alice" ]; then
-        step "设置 Alice DNS64 服务器..."
-        cat > "$resolv_conf" <<EOF
-nameserver 2602:f92a:220:169:169:64:64:1
-nameserver 2a14:67c0:103:c::a
-EOF
-    else
-        step "设置 Legend DNS64 服务器..."
-        cat > "$resolv_conf" <<EOF
-nameserver 2602:fc59:b0:9e::64
-EOF
-    fi
-    
-    if test_github_access; then
-        return 0
-    fi
-    
-    warning "主DNS64服务器访问GitHub失败，尝试备选DNS64服务器..."
-    
-    for dns_server in "${ALTERNATE_DNS64_SERVERS[@]}"; do
-        if test_dns64_server "$dns_server"; then
-            step "使用备选DNS64服务器: $dns_server"
-            cat > "$resolv_conf" <<EOF
-nameserver $dns_server
-EOF
-            
-            if test_github_access; then
-                success "使用备选DNS64服务器 $dns_server 成功访问GitHub。"
-                return 0
-            fi
-        fi
-    done
-    
-    error "所有DNS64服务器测试失败，无法访问GitHub。"
-    
-    restore_dns_config "$resolv_conf" "$resolv_conf_bak" "$was_immutable"
-    
-    return 1
-}
-
-restore_dns_config() {
-    local resolv_conf=$1
-    local resolv_conf_bak=$2
-    local was_immutable=$3
-
-    step "恢复原始 DNS 配置..."
-    if [ -f "$resolv_conf_bak" ]; then
-        mv "$resolv_conf_bak" "$resolv_conf"
-        success "DNS 配置已恢复。"
-
-        if [ "$was_immutable" = true ]; then
-            info "重新锁定 /etc/resolv.conf..."
-            chattr +i "$resolv_conf" || warning "无法重新锁定 /etc/resolv.conf。"
-            success "锁定完成。"
-        fi
-    else
-        warning "未找到 DNS 备份文件 ($resolv_conf_bak)，无法自动恢复。"
-        if [ "$was_immutable" = true ]; then
-             warning "尝试锁定当前的 /etc/resolv.conf (注意：内容可能不是原始配置)..."
-             chattr +i "$resolv_conf" || warning "无法锁定 /etc/resolv.conf。"
-        fi
-    fi
-}
-
-INSTALL=false
-UNINSTALL=false
-SWITCH_CONFIG=false
-UPDATE=false
-MODE="alice"
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -i|--install)
-            INSTALL=true
-            if [[ $2 != -* ]] && [[ -n $2 ]]; then
-                MODE="$2"
-                shift 2
-            else
-                shift
-            fi
-            ;;
-        -r|--remove)
-            UNINSTALL=true
-            shift
-            ;;
-        -s|--switch)
-            SWITCH_CONFIG=true
-            shift
-            ;;
-        -h|--help)
-            show_usage
-            exit 0
-            ;;
-        -u|--update)
-            UPDATE=true
-            shift
-            ;;
-        *)
-            error "未知选项: $1"
-            show_usage
-            exit 1
-            ;;
-    esac
-done
-
-operation_count=0
-if [ "$INSTALL" = true ]; then operation_count=$((operation_count + 1)); fi
-if [ "$UNINSTALL" = true ]; then operation_count=$((operation_count + 1)); fi
-if [ "$SWITCH_CONFIG" = true ]; then operation_count=$((operation_count + 1)); fi
-if [ "$UPDATE" = true ]; then operation_count=$((operation_count + 1)); fi
-
-if [ "$operation_count" -eq 0 ]; then
-    error "请指定一个操作: 安装 (-i), 卸载 (-r), 切换端口 (-s), 或更新 (-u)"
-    show_usage
-    exit 1
-elif [ "$operation_count" -gt 1 ]; then
-    error "请仅指定一个主要操作: 安装 (-i), 卸载 (-r), 切换端口 (-s), 或更新 (-u)"
-    show_usage
-    exit 1
-fi
-
-if [ "$SWITCH_CONFIG" = true ] && [ "$INSTALL" = true ]; then
-    error "不能同时指定安装 (-i) 和切换端口 (-s) 操作。"
-    show_usage
-    exit 1
-fi
-
-
 uninstall_tun2socks() {
     SERVICE_FILE="/etc/systemd/system/tun2socks.service"
     CONFIG_DIR="/etc/tun2socks"
@@ -331,7 +268,7 @@ uninstall_tun2socks() {
         info "tun2socks 服务未在运行。"
     fi
 
-    if systemctl is-enabled --quiet tun2socks.service; then
+    if systemctl is-enabled --quiet tun2socks.service 2>/dev/null; then
         systemctl disable tun2socks.service
         success "tun2socks 服务已禁用开机自启。"
     else
@@ -601,17 +538,95 @@ switch_alice_port() {
     fi
 }
 
+#================================================================================
+# 主执行逻辑
+#================================================================================
 
-if [ "$UNINSTALL" = true ]; then
-    uninstall_tun2socks
-elif [ "$INSTALL" = true ]; then
-    if [ "$MODE" != "alice" ] && [ "$MODE" != "legend" ]; then
-        error "无效的安装模式 '$MODE'，请使用 'alice' 或 'legend'"
+parse_options() {
+    local option_count=0
+    
+    if [ $# -eq 0 ]; then
+        error "请指定一个操作。使用 -h 或 --help 查看帮助。"
         exit 1
     fi
-    install_tun2socks
-elif [ "$SWITCH_CONFIG" = true ]; then
-    switch_alice_port
-elif [ "$UPDATE" = true ]; then
-    check_for_updates
-fi
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -i|--install)
+                option_count=$((option_count + 1))
+                ACTION="install"
+                if [[ $2 != -* ]] && [[ -n $2 ]]; then
+                    MODE="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            -r|--remove)
+                option_count=$((option_count + 1))
+                ACTION="uninstall"
+                shift
+                ;;
+            -s|--switch)
+                option_count=$((option_count + 1))
+                ACTION="switch"
+                shift
+                ;;
+            -u|--update)
+                option_count=$((option_count + 1))
+                ACTION="update"
+                shift
+                ;;
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            *)
+                error "未知选项: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+
+    if [ "$option_count" -gt 1 ]; then
+        error "请仅指定一个主要操作: 安装 (-i), 卸载 (-r), 切换端口 (-s), 或更新 (-u)"
+        show_usage
+        exit 1
+    fi
+}
+
+dispatch_action() {
+    case "$ACTION" in
+        install)
+            if [ "$MODE" != "alice" ] && [ "$MODE" != "legend" ]; then
+                error "无效的安装模式 '$MODE'，请使用 'alice' 或 'legend'"
+                exit 1
+            fi
+            install_tun2socks
+            ;;
+        uninstall)
+            uninstall_tun2socks
+            ;;
+        switch)
+            switch_alice_port
+            ;;
+        update)
+            check_for_updates
+            ;;
+        *)
+            error "没有指定操作或操作无效。"
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+main() {
+    require_root
+    parse_options "$@"
+    dispatch_action
+}
+
+# 脚本入口点
+main "$@"
