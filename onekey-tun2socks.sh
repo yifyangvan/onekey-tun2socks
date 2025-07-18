@@ -4,7 +4,7 @@ set -e
 #================================================================================
 # 常量和全局变量
 #================================================================================
-VERSION="1.0.8"
+VERSION="1.0.9"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 # 颜色定义
@@ -441,12 +441,20 @@ ExecStartPost=/sbin/ip -6 rule add fwmark 438 lookup main pref 10
 ExecStartPost=/sbin/ip route add default dev tun0 table 20
 ExecStartPost=/sbin/ip rule add lookup 20 pref 20
 ${RULE_ADD_FROM_MAIN_IP}
+ExecStartPost=/sbin/ip rule add to 127.0.0.0/8 lookup main pref 16
+ExecStartPost=/sbin/ip rule add to 10.0.0.0/8 lookup main pref 16
+ExecStartPost=/sbin/ip rule add to 172.16.0.0/12 lookup main pref 16
+ExecStartPost=/sbin/ip rule add to 192.168.0.0/16 lookup main pref 16
 
 ExecStop=/sbin/ip rule del fwmark 438 lookup main pref 10
 ExecStop=/sbin/ip -6 rule del fwmark 438 lookup main pref 10
 ExecStop=/sbin/ip route del default dev tun0 table 20
 ExecStop=/sbin/ip rule del lookup 20 pref 20
 ${RULE_DEL_FROM_MAIN_IP}
+ExecStop=/sbin/ip rule del to 127.0.0.0/8 lookup main pref 16
+ExecStop=/sbin/ip rule del to 10.0.0.0/8 lookup main pref 16
+ExecStop=/sbin/ip rule del to 172.16.0.0/12 lookup main pref 16
+ExecStop=/sbin/ip rule del to 192.168.0.0/16 lookup main pref 16
 
 Restart=on-failure
 
