@@ -4,7 +4,7 @@ set -e
 #================================================================================
 # 常量和全局变量
 #================================================================================
-VERSION="1.0.9"
+VERSION="1.1.0"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 # 颜色定义
@@ -48,7 +48,7 @@ require_root() {
 show_usage() {
     echo -e "${CYAN}使用方法:${NC} $0 [选项]"
     echo -e "${CYAN}选项:${NC}"
-    echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice 或 legend)"
+    echo -e "  ${GREEN}-i, --install${NC}    安装 tun2socks (可选参数: alice, legend, 或 custom)"
     echo -e "  ${GREEN}-r, --remove${NC}     卸载 tun2socks"
     echo -e "  ${GREEN}-s, --switch${NC}     切换 Alice 模式的 Socks5 端口 (如果已安装)"
     echo -e "  ${GREEN}-u, --update${NC}     检查并更新脚本"
@@ -57,6 +57,7 @@ show_usage() {
     echo -e "${CYAN}示例:${NC}"
     echo -e "  $0 -i alice    安装 Alice 版本的 tun2socks"
     echo -e "  $0 -i legend   安装 Legend 版本的 tun2socks"
+    echo -e "  $0 -i custom   使用自定义出口节点安装 tun2socks"
     echo -e "  $0 -r          卸载 tun2socks"
     echo -e "  $0 -s          切换 Alice 模式的 Socks5 端口"
     echo -e "  $0 -u          检查脚本更新"
@@ -226,6 +227,43 @@ check_for_updates() {
     exit 0
 }
 
+get_custom_server_config() {
+    info "进入自定义出口节点配置模式..." >&2
+    
+    local address port username password
+    
+    while true; do
+        read -r -p "请输入Socks5服务器地址 (例如: 2001:db8::1 或 1.2.3.4): " address
+        if [ -n "$address" ]; then
+            break
+        else
+            error "服务器地址不能为空。" >&2
+        fi
+    done
+    
+    while true; do
+        read -r -p "请输入Socks5服务器端口 (例如: 1080): " port
+        if [[ "$port" =~ ^[0-9]+$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; then
+            break
+        else
+            error "无效的端口号，请输入 1 到 65535 之间的数字。" >&2
+        fi
+    done
+    
+    read -r -p "请输入用户名 (可选，留空则不使用): " username
+    
+    if [ -n "$username" ]; then
+        read -r -p "请输入密码 (可选，留空则不使用): " password
+    else
+        password=""
+    fi
+    
+    echo "$address"
+    echo "$port"
+    echo "$username"
+    echo "$password"
+}
+
 select_alice_port() {
     local options=(
         "新加坡机房IP:10001"
@@ -255,7 +293,29 @@ select_alice_port() {
     done
 }
 
+cleanup_ip_rules() {
+    step "正在清理残留的 IP 规则和路由..."
+
+    ip rule del fwmark 438 lookup main pref 10 2>/dev/null || true
+    ip -6 rule del fwmark 438 lookup main pref 10 2>/dev/null || true
+    ip route del default dev tun0 table 20 2>/dev/null || true
+    ip rule del lookup 20 pref 20 2>/dev/null || true
+    ip rule del to 127.0.0.0/8 lookup main pref 16 2>/dev/null || true
+    ip rule del to 10.0.0.0/8 lookup main pref 16 2>/dev/null || true
+    ip rule del to 172.16.0.0/12 lookup main pref 16 2>/dev/null || true
+    ip rule del to 192.168.0.0/16 lookup main pref 16 2>/dev/null || true
+
+    ip rule list | grep 'pref 15' | while read -r rule; do
+        info "正在删除规则: $rule"
+        ip rule del $rule 2>/dev/null || true
+    done
+
+    success "IP 规则和路由清理完成。"
+}
+
 uninstall_tun2socks() {
+    cleanup_ip_rules
+
     SERVICE_FILE="/etc/systemd/system/tun2socks.service"
     CONFIG_DIR="/etc/tun2socks"
     BINARY_PATH="/usr/local/bin/tun2socks"
@@ -307,6 +367,8 @@ uninstall_tun2socks() {
 }
 
 install_tun2socks() {
+    cleanup_ip_rules
+
     step "检查 tun2socks 服务当前状态 (准备安装)..."
     if systemctl is-active --quiet tun2socks.service; then
         info "tun2socks 服务正在运行，将在安装前停止它。"
@@ -395,6 +457,29 @@ socks5:
   password: 'alicefofo123..OVO'
   mark: 438
 EOF
+    elif [ "$MODE" = "custom" ]; then
+        get_custom_server_config | {
+            IFS= read -r SOCKS_ADDRESS
+            IFS= read -r SOCKS_PORT
+            IFS= read -r SOCKS_USERNAME
+            IFS= read -r SOCKS_PASSWORD
+
+            cat > "$CONFIG_FILE" <<EOF
+tunnel:
+  name: tun0
+  mtu: 8500
+  multi-queue: true
+  ipv4: 198.18.0.1
+
+socks5:
+  port: $(echo "$SOCKS_PORT" | tr -d '\r')
+  address: '$(echo "$SOCKS_ADDRESS" | tr -d '\r')'
+  udp: 'udp'
+$( [ -n "$SOCKS_USERNAME" ] && echo "  username: '$(echo "$SOCKS_USERNAME" | tr -d '\r')'" )
+$( [ -n "$SOCKS_PASSWORD" ] && echo "  password: '$(echo "$SOCKS_PASSWORD" | tr -d '\r')'" )
+  mark: 438
+EOF
+        }
     else
         cat > "$CONFIG_FILE" <<'EOF'
 tunnel:
@@ -498,8 +583,9 @@ switch_alice_port() {
         exit 1
     fi
 
-    if ! grep -q "alice" "$CONFIG_FILE"; then
+    if ! grep -q "username: 'alice'" "$CONFIG_FILE"; then
         error "此切换功能仅适用于 Alice 模式的配置。"
+        info "Legend 和 Custom 模式的配置需要手动修改: $CONFIG_FILE"
         exit 1
     fi
 
@@ -607,8 +693,8 @@ parse_options() {
 dispatch_action() {
     case "$ACTION" in
         install)
-            if [ "$MODE" != "alice" ] && [ "$MODE" != "legend" ]; then
-                error "无效的安装模式 '$MODE'，请使用 'alice' 或 'legend'"
+            if [ "$MODE" != "alice" ] && [ "$MODE" != "legend" ] && [ "$MODE" != "custom" ]; then
+                error "无效的安装模式 '$MODE'，请使用 'alice', 'legend' 或 'custom'"
                 exit 1
             fi
             install_tun2socks
