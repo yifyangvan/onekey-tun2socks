@@ -1,6 +1,10 @@
 # 给免费机一键添加Socks5 IPv4出口
 
 ## 更新日志
+v1.1.1 更新Alice出口提示
+
+v1.1.0 添加自定义出口节点配置功能
+
 v1.0.9 过滤本地路由，防止回环
 
 v1.0.8 无聊的重构
@@ -26,7 +30,7 @@ curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-t
 
 > 注意事项：有IPv4的Alice机型使用Alice家宽Socks5出口时，需手动修改DNS（建议使用Alice V6的解锁DNS），由于家宽IP不在Alice V4 DNS的白名单内，会导致解析失败；机房Socks5出口不受此影响。
 
-### 以下命令适用于LegendVPS的纯IPv6免费机
+### 以下命令适用于LegendVPS的纯IPv6免费机（出口可能已失效）
 ```bash
 curl -L https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh -o onekey-tun2socks.sh && chmod +x onekey-tun2socks.sh && sudo ./onekey-tun2socks.sh -i legend
 ```
@@ -58,7 +62,7 @@ chmod +x onekey-tun2socks.sh
 # 安装 Alice 版本
 sudo ./onekey-tun2socks.sh -i alice
 
-# 安装 Legend 版本
+# 安装 Legend 版本（出口可能已失效）
 sudo ./onekey-tun2socks.sh -i legend
 
 # 变更 Alice 出口

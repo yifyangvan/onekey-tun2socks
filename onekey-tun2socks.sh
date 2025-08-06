@@ -4,7 +4,7 @@ set -e
 #================================================================================
 # 常量和全局变量
 #================================================================================
-VERSION="1.1.0"
+VERSION="1.1.1"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 # 颜色定义
@@ -267,14 +267,25 @@ get_custom_server_config() {
 select_alice_port() {
     local options=(
         "新加坡机房IP:10001"
-        "香港家宽:20000"
+        "香港家宽 (已弃用):20000"
         "台湾家宽:30000"
-        "越南家宽:40000"
+        "越南家宽 (已弃用):40000"
         "日本家宽:50000"
     )
+    echo >&2
+    echo -e "${YELLOW}=========================================================${NC}" >&2
+    echo -e "${RED}注意：由于DDOS导致的链路不佳，香港、越南家宽已被直接弃用。${NC}" >&2
+    echo -e "${YELLOW}=========================================================${NC}" >&2
+    echo >&2
     info "请为 Alice 模式选择 Socks5 出口端口:" >&2
     for i in "${!options[@]}"; do
-        printf "  %s) %s (端口: %s)\n" "$((i+1))" "${options[$i]%%:*}" "${options[$i]#*:}" >&2
+        local option_text="${options[$i]%%:*}"
+        local port="${options[$i]#*:}"
+        if [[ "$option_text" == *"已弃用"* ]]; then
+            printf "  %s) ${RED}%s (端口: %s)${NC}\n" "$((i+1))" "$option_text" "$port" >&2
+        else
+            printf "  %s) ${GREEN}%s (端口: %s)${NC}\n" "$((i+1))" "$option_text" "$port" >&2
+        fi
     done
 
     local choice
@@ -305,9 +316,9 @@ cleanup_ip_rules() {
     ip rule del to 172.16.0.0/12 lookup main pref 16 2>/dev/null || true
     ip rule del to 192.168.0.0/16 lookup main pref 16 2>/dev/null || true
 
-    ip rule list | grep 'pref 15' | while read -r rule; do
-        info "正在删除规则: $rule"
-        ip rule del $rule 2>/dev/null || true
+    info "正在循环清理优先级为 15 的规则..."
+    while ip rule del pref 15 2>/dev/null; do
+        info "删除了一条优先级为 15 的规则。"
     done
 
     success "IP 规则和路由清理完成。"
