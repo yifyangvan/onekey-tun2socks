@@ -4,7 +4,7 @@ set -e
 #================================================================================
 # 常量和全局变量
 #================================================================================
-VERSION="1.1.1"
+VERSION="1.1.2"
 SCRIPT_URL="https://raw.githubusercontent.com/hkfires/onekey-tun2socks/main/onekey-tun2socks.sh"
 
 # 颜色定义
@@ -118,15 +118,9 @@ set_dns64_servers() {
     local resolv_conf_bak=$4
     
     step "设置 DNS64 服务器（用于下载tun2socks）..."
-    if [ "$mode" = "alice" ]; then
-        cat > "$resolv_conf" <<EOF
-nameserver 2602:f92a:220:169:169:64:64:1
-EOF
-    else
-        cat > "$resolv_conf" <<EOF
+    cat > "$resolv_conf" <<EOF
 nameserver 2602:fc59:b0:9e::64
 EOF
-    fi
     
     if test_github_access; then
         return 0
